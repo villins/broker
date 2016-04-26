@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.version       = Broker::VERSION
   spec.authors       = ["villins"]
   spec.email         = ["linshao512@gmail.com"]
-  spec.summary       = %q{TODO: Write a short summary. Required.}
-  spec.description   = %q{TODO: Write a longer description. Optional.}
+  spec.summary       = %q{ wrapper go broker }
+  spec.description   = %q{ wrapper go broker }
   spec.homepage      = ""
   spec.license       = "MIT"
 
