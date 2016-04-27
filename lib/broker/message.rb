@@ -1,45 +1,42 @@
+require 'json'
 module Broker
   class Message
-    attr_reader :data 
+    attr_accessor :code, :data, :from, :action, :service, :nav 
 
     def initialize(options)
-      data = options 
-    end
-
-    def code
-      data[:code]
-    end
-
-    def data
-      data[:data]
-    end
-
-    def form
-      data[:form]
-    end
-
-    def action
-      data[:action]
-    end
-
-    def action
-      data[:service]
-    end
-
-    def nav
-      data[:nav]
+      @code = options.fetch(:code, "") 
+      @data = options.fetch(:data, "") 
+      @from = options.fetch(:from, "") 
+      @action = options.fetch(:action, "") 
+      @service = options.fetch(:service, "") 
+      @nav = options.fetch(:nav, "") 
     end
 
     def to_json
-      data.to_json
+      hash = {
+        service: service,
+        action: action,
+        data: data,
+        from: from,
+        nav: nav
+      }
+      hash[:code] = code if action == "res"
+      JSON.generate(hash)
     end
 
-    def build_res
-      data[:action] = "rep"
+    def response
+      @action = "rep"
+      self
+    end
+
+    def request
+      @action = "req"
+      self
     end
 
     def self.generate(json_string)
       Message.new(JSON.parse(json_string,:symbolize_names => true))
+      self
     end
   end
 end

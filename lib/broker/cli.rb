@@ -1,8 +1,8 @@
 require 'logger'
+require 'broker/configuration'
 module Broker
   class Cli
-    cattr_accessor(:configuration, instance_accessor: true) { Broker::Configuration.new  }
-    delegate :logger, to: :configuration
+    attr_accessor :configuration
     attr_reader :service
     attr_accessor :routes
 
@@ -10,6 +10,7 @@ module Broker
       @service = service
       @routes = {}
       @running = false
+      @configuration = Broker::Configuration.new
       @sub_reged_token = "" # 所有服务注册后，返回的监听凭证
 
       @synced_version = ""      # 已同步到的版本
@@ -17,6 +18,19 @@ module Broker
 
       @mutex = Mutex.new
       @synced_first_cv = ConditionVariable.new # 首次成功通知
+    end
+
+    def request(topic, data = {})
+      options = {
+        service: topic,
+        data: data,
+        from: "",
+        nav: ""
+      }
+      message = Broker::Message.new(options).request
+      puts message.to_json
+      rep = invoke("req", message.to_json)
+      rep
     end
 
     def worker_pool_size
@@ -31,9 +45,16 @@ module Broker
       configuration.timer_interval
     end
 
+    def worker_options
+      {
+        timeout: configuration.timeout,
+        url:     configuration.url
+      }
+    end
+
     def worker_pool
       @worker_pool ||= ConnectionPool.new(size: pool_size, timeout: timeout) do
-        Broker::Worker.new(configuration)
+        Broker::Worker.new(worker_options)
       end
     end
 
@@ -41,17 +62,11 @@ module Broker
       configuration.pool_size
     end
 
-    def sync_config
+    def config_handle
       configuration.sync_config_handle
     end
 
-    def invoke(*args)
-      worker_pool.with do |worker|
-        worker.exec(args)
-      end
-    end
-
-    def sync(&block)
+    def sync_config(block)
       configuration.sync_config_handle = block
     end
 
@@ -70,7 +85,7 @@ module Broker
 
     def register()
       puts "尝试注册服务: #{ topics.join(", ") }"
-      res = invoke("reg", topics)
+      res = invoke("reg", topics.join(","))
       if res[0] == "ok"
         @sub_reged_token = res[1]
         puts "注册服务成功！"
@@ -92,7 +107,7 @@ module Broker
           puts "当前配置已经是最新配置"
         when "ok"
           info = JSON.parse(res[2])
-          ok = sync_config.call(false, info)
+          ok = config_handle.call(false, info)
           @synced_version = res[1]
         when "err"
           puts "同步配置拉取失败: #{ res[1] }"
@@ -112,9 +127,10 @@ module Broker
     def worker_loop(doing_check, cv_restart)
       while doing_check.call do
         begin
-          invoke("sub", @sub_reged_token)
+          res = invoke("sub", @sub_reged_token)
           next if res[0] == "empty"
 
+          puts res
           if res[0] == "err"
             puts "订阅服务失败: #{ res[1] }"
             if res[1].include?("unregistered")
@@ -124,24 +140,24 @@ module Broker
           end
 
           if res[0] == "ok"
-            req = Broker::Message.generate(res[1])
-            topic = req.service
-            resAck = req.build_res
+            req = Broker::Message.generate(res[1]).request
+            rep = Broker::Message.generate(res[1]).request
 
-            if handle = routes[topic]
+            if handle = routes[req.service]
               begin
-                handle.call(req, resAck)
+                handle.call(req, rep)
               rescue StandardError => err
-                resAck.code = 500
-                resAck.data = "服务处理失败：%s" % err
+                rep.code = 500
+                rep.data = "服务处理失败：%s" % err
                 puts "服务处理失败: #{ err }"
               end
             else
-              resAck.code = 400
-              resAck.data = "服务处理失败：找不到 %s 的相关处理" % service
+              rep.code = 400
+              rep.data = "服务处理失败：找不到 %s 的相关处理" % req.service
+                puts "服务处理失败: #{ err }"
             end
 
-            res = invoke("res", resAck.to_json)
+            res = invoke("res", rep.to_json)
             if res[0] == "err"
               puts "订阅服务发送应答失败: #{ res[1] }"
             end
@@ -157,7 +173,8 @@ module Broker
       end
     end
 
-    def run
+    def run(service = nil)
+      @name = service if service
       @running = true
       while @running
         run_loop
@@ -177,7 +194,7 @@ module Broker
 
       begin
         # 启动同步线程
-        if sync_config
+        if config_handle
           Thread.new {
             sync_loop(doing_check)
           }
@@ -190,7 +207,7 @@ module Broker
 
         # # 启动监听服务
         cv_restart = ConditionVariable.new # 需要重启
-        @worker_size.times do |i|
+        worker_pool_size.times do |i|
           Thread.new{
             worker_loop(doing_check, cv_restart)
           }
@@ -207,5 +224,11 @@ module Broker
         puts "微服务重启……"
       end
     end 
+
+    def invoke(*args)
+      worker_pool.with do |worker|
+        worker.exec(args)
+      end
+    end
   end
 end
