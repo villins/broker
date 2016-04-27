@@ -25,7 +25,7 @@ module Broker
     end
 
     def response
-      @action = "rep"
+      @action = "res"
       self
     end
 
@@ -36,7 +36,6 @@ module Broker
 
     def self.generate(json_string)
       Message.new(JSON.parse(json_string,:symbolize_names => true))
-      self
     end
   end
 end

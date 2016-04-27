@@ -6,7 +6,7 @@ TODO: Write a gem description
 
 Add this line to your application's Gemfile:
 
-    gem 'broker'
+    gem 'broker', git: "git@github.com/villins/broker.git"
 
 And then execute:
 
@@ -17,8 +17,27 @@ Or install it yourself as:
     $ gem install broker
 
 ## Usage
+> 具体看 example 目录例子
 
-TODO: Write usage instructions here
+    ```
+     ### 配置
+     Broker.configure do |config|
+       config.url = "broker://127.0.0.1:6636"
+     end
+
+     ### 配置同步block
+     Broker.sync_config_handle do |flag, info|
+       puts "配置同步没做处理"
+     end
+
+     ### 添加 service 路由
+     Broker.on("users/create") do |res, rsp|
+       puts res
+     end
+
+     ### 启动服务
+     Broker.run("users")
+    ```
 
 ## Contributing
 

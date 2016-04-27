@@ -11,7 +11,7 @@ Broker.sync_config_handle do |flag, info|
 end
 
 Broker.on("users/create") do |res, rsp|
-    puts res
+  puts res
 end
 
-Broker.run("dev")
+Broker.run("users")

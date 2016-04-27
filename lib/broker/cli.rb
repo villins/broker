@@ -3,11 +3,11 @@ require 'broker/configuration'
 module Broker
   class Cli
     attr_accessor :configuration
-    attr_reader :service
+    attr_reader :name
     attr_accessor :routes
 
-    def initialize(service, opts = {})
-      @service = service
+    def initialize(name, opts = {})
+      @name = name
       @routes = {}
       @running = false
       @configuration = Broker::Configuration.new
@@ -141,7 +141,7 @@ module Broker
 
           if res[0] == "ok"
             req = Broker::Message.generate(res[1]).request
-            rep = Broker::Message.generate(res[1]).request
+            rep = Broker::Message.generate(res[1]).response
 
             if handle = routes[req.service]
               begin
@@ -173,8 +173,8 @@ module Broker
       end
     end
 
-    def run(service = nil)
-      @name = service if service
+    def run(name = nil)
+      @name = name if name
       @running = true
       while @running
         run_loop

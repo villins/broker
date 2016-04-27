@@ -26,10 +26,6 @@ module Broker
     server.subscribe(topic, &block)
   end
 
-  def self.routes
-    yield
-  end
-
   def self.server
     @server ||= Broker::Cli.new("auth")
   end
