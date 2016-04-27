@@ -10,7 +10,7 @@ module Broker
     def initialize(opts = {})
       @timeout   = opts[:timeout] || 5.0
       @sock      = nil
-      @url       = parse_url(opts[:url] || "broker://127.0.0.1:6636")
+      @url       = parse_url(opts[:broker_url] || "broker://127.0.0.1:6636")
       @reconnect = opts[:reconnect] != false
       connect
     end

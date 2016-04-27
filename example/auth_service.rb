@@ -3,7 +3,7 @@ Bundler.setup
 require 'broker'
 
 Broker.configure do |config|
-  config.url = "broker://127.0.0.1:6636"
+  config.broker_url = "broker://127.0.0.1:6636"
 end
 
 Broker.sync_config_handle do |flag, info|

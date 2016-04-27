@@ -12,17 +12,14 @@ And then execute:
 
     $ bundle
 
-Or install it yourself as:
-
-    $ gem install broker
-
 ## Usage
 > 具体看 example 目录例子
 
     ```
      ### 配置
+     ### broker_url, pool_size, worker_pool_size, timeout, timer_interval
      Broker.configure do |config|
-       config.url = "broker://127.0.0.1:6636"
+       config.broker_url = "broker://127.0.0.1:6636"
      end
 
      ### 配置同步block

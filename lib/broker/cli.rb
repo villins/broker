@@ -6,8 +6,7 @@ module Broker
     attr_reader :name
     attr_accessor :routes
 
-    def initialize(name, opts = {})
-      @name = name
+    def initialize
       @routes = {}
       @running = false
       @configuration = Broker::Configuration.new
@@ -28,9 +27,7 @@ module Broker
         nav: ""
       }
       message = Broker::Message.new(options).request
-      puts message.to_json
       rep = invoke("req", message.to_json)
-      rep
     end
 
     def worker_pool_size
@@ -47,8 +44,8 @@ module Broker
 
     def worker_options
       {
-        timeout: configuration.timeout,
-        url:     configuration.url
+        timeout:    configuration.timeout,
+        broker_url: configuration.broker_url
       }
     end
 
@@ -84,15 +81,15 @@ module Broker
     end
 
     def register()
-      puts "尝试注册服务: #{ topics.join(", ") }"
+      logger.info "尝试注册服务: #{ topics.join(", ") }"
       res = invoke("reg", topics.join(","))
       if res[0] == "ok"
         @sub_reged_token = res[1]
-        puts "注册服务成功！"
+        logger.info "注册服务成功！"
         return true
       end
 
-      puts "注册服务失败: #{ res[1] }"
+      logger.error "注册服务失败: #{ res[1] }"
       return false
     end
     alias reg register
@@ -104,13 +101,13 @@ module Broker
         ok = false
         case ack
         when "newest"
-          puts "当前配置已经是最新配置"
+          logger.info "当前配置已经是最新配置"
         when "ok"
           info = JSON.parse(res[2])
           ok = config_handle.call(false, info)
           @synced_version = res[1]
         when "err"
-          puts "同步配置拉取失败: #{ res[1] }"
+          logger.error "同步配置拉取失败: #{ res[1] }"
         end
         # 若是第一次成功，则发出信号
         if !@synced_first && ok
@@ -130,9 +127,8 @@ module Broker
           res = invoke("sub", @sub_reged_token)
           next if res[0] == "empty"
 
-          puts res
           if res[0] == "err"
-            puts "订阅服务失败: #{ res[1] }"
+            logger.info "订阅服务失败: #{ res[1] }"
             if res[1].include?("unregistered")
               raise MSStopError, "broker重启，需要重新注册"
             end
@@ -149,17 +145,17 @@ module Broker
               rescue StandardError => err
                 rep.code = 500
                 rep.data = "服务处理失败：%s" % err
-                puts "服务处理失败: #{ err }"
+                logger.error "服务处理失败: #{ err }"
               end
             else
               rep.code = 400
               rep.data = "服务处理失败：找不到 %s 的相关处理" % req.service
-                puts "服务处理失败: #{ err }"
+                logger.info "服务处理失败: #{ err }"
             end
 
             res = invoke("res", rep.to_json)
             if res[0] == "err"
-              puts "订阅服务发送应答失败: #{ res[1] }"
+              logger.info "订阅服务发送应答失败: #{ res[1] }"
             end
           end
         rescue MSStopError
@@ -168,7 +164,7 @@ module Broker
             cv_restart.signal
           }
         rescue StandardError => err
-          puts "订阅服务处理失败: #{ err }"
+          logger.info "订阅服务处理失败: #{ err }"
         end
       end
     end
@@ -202,8 +198,10 @@ module Broker
           @mutex.synchronize{
             @synced_first_cv.wait(@mutex)
           }
-          puts "首次同步成功"
+          logger.info "首次同步成功"
         end
+
+        logger.info "链接到 broker 服务为: #{ configuration.broker_url }"
 
         # # 启动监听服务
         cv_restart = ConditionVariable.new # 需要重启
@@ -218,17 +216,25 @@ module Broker
           cv_restart.wait(@mutex)
         }
       rescue StandardError=> err
-        puts "微服务运行发现未处理错误: #{ err }"
+        logger.error "微服务运行发现未处理错误: #{ err }"
       ensure
         doing = false
-        puts "微服务重启……"
+        logger.info "微服务重启……"
       end
     end 
+
+    def close
+      worker_pool.shutdwon { |worker| worker.disconnect }
+    end
 
     def invoke(*args)
       worker_pool.with do |worker|
         worker.exec(args)
       end
+    end
+
+    def logger
+      Broker::Logging.logger
     end
   end
 end

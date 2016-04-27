@@ -1,5 +1,6 @@
 require "broker/version"
 require "connection_pool"
+require "broker/logging"
 require "broker/errors"
 require "broker/message"
 require "broker/worker"
@@ -8,6 +9,9 @@ require "broker/cli"
 module Broker
   def self.configure
     yield server.configuration
+    unless server.configuration.pool_work_size?
+      Broker::Logging.logger.error("pool_size must be gt worker_pool_size")
+    end
   end
 
   def self.configuration
@@ -27,7 +31,7 @@ module Broker
   end
 
   def self.server
-    @server ||= Broker::Cli.new("auth")
+    @server ||= Broker::Cli.new
   end
 
   def self.request(topic, data = {})
