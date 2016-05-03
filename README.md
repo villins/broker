@@ -6,7 +6,7 @@ TODO: Write a gem description
 
 Add this line to your application's Gemfile:
 
-    gem 'broker', git: "git@github.com/villins/broker.git"
+    gem 'broker', git: "git@github.com:villins/broker.git"
 
 And then execute:
 
@@ -34,6 +34,19 @@ And then execute:
 
      ### 启动服务
      Broker.run("users")
+    ```
+
+## 在 rails 使用 yell 做日志切割
+    ```
+    # 添加gem
+    gem 'yell-rails'
+
+    # 更改日志配置
+    Broker::Logging.logger = Yell.new do |l|
+      l.level = 'gte.info'
+      l.adapter :datefile, "#{Rails.root.join("log", "sidekiq.log")}", level: 'lte.error', keep: 5
+      l.adapter :datefile, "#{Rails.root.join("log", "error.log")}", level: 'gte.error', keep: 5
+    end
     ```
 
 ## Contributing
