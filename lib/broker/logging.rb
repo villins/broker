@@ -8,7 +8,7 @@ module Broker
 
       @logger = Logger.new(log_target)
       @logger.level = Logger::INFO
-      @logger.formatter = proc do |level, datetime, progname, msg| 
+      @logger.formatter = proc do |level, datetime, progname, msg|
         date_format = datetime.strftime("%Y-%m-%d %H:%M:%S")
         "[#{ date_format }] #{ level.ljust(5) } (#{ progname }) : #{ msg } \n"
       end

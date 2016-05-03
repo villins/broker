@@ -5,6 +5,8 @@ require "broker/errors"
 require "broker/message"
 require "broker/worker"
 require "broker/cli"
+require 'broker/beanstalk_hack'
+
 
 module Broker
   def self.configure
@@ -30,16 +32,23 @@ module Broker
     server.subscribe(topic, &block)
   end
 
+  def self.job(topic, &block)
+    server.job(topic, &block)
+  end
+
   def self.server
     @server ||= Broker::Cli.new
   end
 
-  def self.request(topic, data = {})
-    server.request(topic, data)
+  def self.request(topic, data = {}, nav="")
+    server.request(topic, data, nav)
+  end
+
+  def self.put(tube, data={}, nav="")
+    server.put(tube, data, nav)
   end
 
   def self.run(name)
     server.run
   end
 end
-
