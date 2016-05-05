@@ -73,7 +73,7 @@ module Broker
         msg.decode_data(res[3])
         msg.from = res[4]
       when "res_recv"
-        msg.code = res[1].to_i
+        msg.code = res[1]
         msg.decode_data(res[2])
       when "err"
         msg.code = "500"
