@@ -96,7 +96,7 @@ module Broker
 
     def sync_loop(doing_check)
       while doing_check.call do
-        invoke("sync", @name, @synced_ver)
+        res = invoke("sync", @name, @synced_ver)
         ack = res[0]
         ok = false
         case ack
@@ -193,7 +193,7 @@ module Broker
         if config_handle
           Thread.new {
             sync_loop(doing_check)
-          }
+          }.join
           # 等待首次同步成功的信号
           @mutex.synchronize{
             @synced_first_cv.wait(@mutex)
