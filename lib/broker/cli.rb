@@ -1,13 +1,15 @@
 require 'logger'
 require 'broker/configuration'
+
 module Broker
   class Cli
     attr_accessor :configuration
     attr_reader :name
-    attr_accessor :routes
+    attr_accessor :routes, :job_routes
 
     def initialize
       @routes = {}
+      @job_routes = {}
       @running = false
       @configuration = Broker::Configuration.new
       @sub_reged_token = "" # 所有服务注册后，返回的监听凭证
@@ -19,15 +21,24 @@ module Broker
       @synced_first_cv = ConditionVariable.new # 首次成功通知
     end
 
-    def request(topic, data = {})
-      options = {
-        service: topic,
-        data: data,
-        from: "",
-        nav: ""
-      }
-      message = Broker::Message.new(options).request
-      rep = invoke("req", message.to_json)
+    def request(service, params={}, nav="")
+      request_broker("req_send", service, params, nav)
+    end
+
+    def put(tube, params={}, nav="")
+      request_broker("job_send", tube, params, nav)
+    end
+
+    def request_broker(action, service, params, nav)
+      req = Broker::Message.new
+      req.action = action
+      req.service = service
+      req.data = params
+      req.nav = nav
+
+      res = invoke(*req.to_res)
+      res = Broker::Message.from_res res
+      res
     end
 
     def worker_pool_size
@@ -78,6 +89,7 @@ module Broker
     end
 
     def job(tube, &block)
+      job_routes[tube] = block
     end
 
     def register()
@@ -124,7 +136,7 @@ module Broker
     def worker_loop(doing_check, cv_restart)
       while doing_check.call do
         begin
-          res = invoke("sub", @sub_reged_token)
+          res = invoke("pull", @sub_reged_token)
           next if res[0] == "empty"
 
           if res[0] == "err"
@@ -135,25 +147,26 @@ module Broker
             next
           end
 
-          if res[0] == "ok"
-            req = Broker::Message.generate(res[1]).request
-            rep = Broker::Message.generate(res[1]).response
+          if res[0] == "req_recv"
+            req = Broker::Message.from_res(res)
+            rep = Broker::Message.from_res(res).response
 
             if handle = routes[req.service]
               begin
                 handle.call(req, rep)
               rescue StandardError => err
-                rep.code = 500
+                rep.code = "500"
                 rep.data = "服务处理失败：%s" % err
                 logger.error "服务处理失败: #{ err }"
+                log_backtrace err
               end
             else
-              rep.code = 400
+              rep.code = "400"
               rep.data = "服务处理失败：找不到 %s 的相关处理" % req.service
                 logger.info "服务处理失败: #{ err }"
             end
 
-            res = invoke("res", rep.to_json)
+            res = invoke(*rep.to_res)
             if res[0] == "err"
               logger.info "订阅服务发送应答失败: #{ res[1] }"
             end
@@ -164,7 +177,50 @@ module Broker
             cv_restart.signal
           }
         rescue StandardError => err
-          logger.info "订阅服务处理失败: #{ err }"
+          logger.error "订阅服务处理失败: #{ err }"
+          log_backtrace err
+        end
+      end
+    end
+
+    def job_process(doing_check)
+      while doing_check.call do
+        begin
+          client = Beaneater.new(configuration.jobserver_url)
+          job_routes.each{|tube, cb|
+            client.jobs.register(tube) do |job|
+              begin
+                cb.call(job)
+              rescue Beaneater::JobNotReserved
+                raise
+              rescue => err
+                logger.error "任务(#{ tube })处理失败：#{ err }"
+                log_backtrace err
+                raise
+              end
+            end
+          }
+
+          Thread.new{
+            begin
+              client.jobs.process!
+            rescue => e
+              logger.error "Beanstalkd处理失败：#{ err }"
+              log_backtrace err
+              client.close
+            end
+
+          }
+
+          # 循环检测
+          while doing_check.call && client.connection.connection do
+            sleep 0.1
+          end
+          client.close if client.connection.connection
+        rescue StandardError => err
+          logger.error "任务初始化失败：#{ err }"
+          log_backtrace err
+          sleep timer_interval
         end
       end
     end
@@ -201,6 +257,7 @@ module Broker
           logger.info "首次同步成功"
         end
 
+        configuration.broker_url = "broker://127.0.0.1:6636" unless configuration.broker_url
         logger.info "链接到 broker 服务为: #{ configuration.broker_url }"
 
         # # 启动监听服务
@@ -211,17 +268,29 @@ module Broker
           }
         end
 
+        unless job_routes.empty?
+          configuration.jobserver_url = "127.0.0.1:11300" unless configuration.jobserver_url
+          logger.info "链接到 jobserver 服务为: #{ configuration.jobserver_url }"
+
+          configuration.job_processer_size.times do |i|
+            Thread.new{
+              job_process(doing_check)
+            }
+          end
+        end
+
         # 等待重启信号
         @mutex.synchronize{
           cv_restart.wait(@mutex)
         }
       rescue StandardError=> err
         logger.error "微服务运行发现未处理错误: #{ err }"
+        log_backtrace err
       ensure
         doing = false
         logger.info "微服务重启……"
       end
-    end 
+    end
 
     def close
       worker_pool.shutdwon { |worker| worker.disconnect }
@@ -235,6 +304,12 @@ module Broker
 
     def logger
       Broker::Logging.logger
+    end
+
+    def log_backtrace(err)
+      if err.respond_to?(:backtrace)
+        logger.error err.backtrace.join("\n")
+      end
     end
   end
 end
