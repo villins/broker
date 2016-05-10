@@ -114,6 +114,7 @@ module Broker
         case ack
         when "newest"
           logger.info "当前配置已经是最新配置"
+          ok = true
         when "ok"
           info = JSON.parse(res[2])
           ok = config_handle.call(false, info)
@@ -249,7 +250,7 @@ module Broker
         if config_handle
           Thread.new {
             sync_loop(doing_check)
-          }.join
+          }
           # 等待首次同步成功的信号
           @mutex.synchronize{
             @synced_first_cv.wait(@mutex)
