@@ -36,8 +36,9 @@ module Broker
       req.data = params
       req.nav = nav
 
-      res = invoke(*req.to_res)
-      res = Broker::Message.from_res res
+      cmds, data = req.to_res
+      cmds, data = invoke(cmds, data)
+      res = Broker::Message.from_res cmds, data
       res
     end
 
@@ -94,7 +95,7 @@ module Broker
 
     def register()
       logger.info "尝试注册服务: #{ topics.join(", ") }"
-      res = invoke("reg", topics.join(","))
+      res, data = invoke(["reg", topics.join(",")])
       if res[0] == "ok"
         @sub_reged_token = res[1]
         logger.info "注册服务成功！"
@@ -108,19 +109,25 @@ module Broker
 
     def sync_loop(doing_check)
       while doing_check.call do
-        res = invoke("sync", @name, @synced_ver)
+        res, data = invoke(["sync", @name, @synced_version])
         ack = res[0]
         ok = false
         case ack
         when "newest"
-          logger.info "当前配置已经是最新配置"
+          # 若为第一次，即使未返回配置信息，也应该回调
+          # 由服务配置回调决定是否可以进一步提供服务
+          unless @synced_first
+            ok = config_handle.call(true, nil)
+            logger.info "（首次）配置未有更新，处理结果：#{ok}"
+          end
         when "ok"
-          info = JSON.parse(res[2])
-          ok = config_handle.call(false, info)
+          ok = config_handle.call(false, data)
           @synced_version = res[1]
+          logger.info "配置有更新，处理结果：#{ok}"
         when "err"
           logger.error "同步配置拉取失败: #{ res[1] }"
         end
+
         # 若是第一次成功，则发出信号
         if !@synced_first && ok
           @synced_first = true
@@ -136,7 +143,7 @@ module Broker
     def worker_loop(doing_check, cv_restart)
       while doing_check.call do
         begin
-          res = invoke("pull", @sub_reged_token)
+          res, data = invoke(["pull", @sub_reged_token])
           next if res[0] == "empty"
 
           if res[0] == "err"
@@ -148,8 +155,8 @@ module Broker
           end
 
           if res[0] == "req_recv"
-            req = Broker::Message.from_res(res)
-            rep = Broker::Message.from_res(res).response
+            req = Broker::Message.from_res(res, data)
+            rep = Broker::Message.from_res(res, data).response
 
             if handle = routes[req.service]
               begin
@@ -163,10 +170,11 @@ module Broker
             else
               rep.code = "400"
               rep.data = "服务处理失败：找不到 %s 的相关处理" % req.service
-                logger.info "服务处理失败: #{ err }"
+              logger.info "服务处理失败: #{ err }"
             end
 
-            res = invoke(*rep.to_res)
+            cmds, data = rep.to_res
+            res, data = invoke(cmds, data)
             if res[0] == "err"
               logger.info "订阅服务发送应答失败: #{ res[1] }"
             end
@@ -239,22 +247,24 @@ module Broker
       doing = true
       doing_check = Proc.new { doing }
 
-      while true do
-        break if register
-        sleep SYNC_INTERVAL_DEFAULT
-      end
-
       begin
+        while true do
+          break if register
+          sleep SYNC_INTERVAL_DEFAULT
+        end
+
         # 启动同步线程
         if config_handle
           Thread.new {
             sync_loop(doing_check)
-          }.join
+          }
           # 等待首次同步成功的信号
           @mutex.synchronize{
             @synced_first_cv.wait(@mutex)
           }
           logger.info "首次同步成功"
+        else
+          logger.warn "未设置配置更新回调"
         end
 
         configuration.broker_url = "broker://127.0.0.1:6636" unless configuration.broker_url
@@ -296,9 +306,9 @@ module Broker
       worker_pool.shutdwon { |worker| worker.disconnect }
     end
 
-    def invoke(*args)
+    def invoke(cmds, data=nil)
       worker_pool.with do |worker|
-        worker.exec(args)
+        worker.exec(cmds, data)
       end
     end
 
