@@ -71,46 +71,43 @@ module Broker
       raise Broker::ConnectionError, "Connection lost (%s)" % [e.class.name.split("::").last]
     end
 
-    def exec(cmds)
-      data = ""
-      cmds.each do |cmd|
-        cmd = cmd.to_s
-        data << cmd.bytesize.to_s << NL << cmd << NL
-      end
-      data << NL
-
-      send_data data
+    def exec(cmds, data=nil)
+      send_data cmds, data
       recv_data
     end
 
-    def send_data(data)
-      io(:write, data)
+    def send_data(cmds, data)
+      bytes_cmd = cmds.to_msgpack
+      size_cmd = bytes_cmd.length
+
+      size_data = 0
+      bytes_data = ""
+
+      unless data.nil?
+        bytes_data = data.to_msgpack
+        size_data = bytes_data.length
+      end
+
+      result = [size_cmd, size_data].pack("NN")
+      result += bytes_cmd
+
+      if size_data > 0
+        result += bytes_data
+      end
+
+      io(:write, result)
     end
 
     def recv_data
-      state = :size
-      data = []
-      size = 0
-      prefix = ""
+      bytes_size = io(:read, 8)
+      size_cmd, size_data = bytes_size.unpack("NN")
 
-      while true
-        case state
-        when :size # read size block
-          size = (prefix + io(:gets)).chomp.to_i
-          state = :data
-        when :data # read data block
-          s = io(:read, size + 2)
-          prefix = s[-1]
-          if prefix == NL # end
-            prefix = ""
-            data.push s[0, size]
-            return data
-          else # data
-            data.push s[0, size]
-            state = :size
-          end
-        end
-      end
-    end
-  end
-end
+      bytes_cmd = io(:read, size_cmd)
+      bytes_data = size_data > 0 ? io(:read, size_data) : nil
+
+      cmds = MessagePack.unpack bytes_cmd
+      data = size_data > 0 ? MessagePack.unpack(bytes_data): bytes_data
+      return [cmds, data]
+    end # recv_data
+  end # Worker
+end # Broker

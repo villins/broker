@@ -1,3 +1,4 @@
+require 'msgpack'
 require "broker/version"
 require "connection_pool"
 require "broker/logging"
@@ -6,6 +7,7 @@ require "broker/message"
 require "broker/worker"
 require "broker/cli"
 require 'broker/beanstalk_hack'
+
 
 
 module Broker
@@ -49,6 +51,6 @@ module Broker
   end
 
   def self.run(name)
-    server.run
+    server.run name
   end
 end

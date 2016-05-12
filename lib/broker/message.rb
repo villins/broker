@@ -3,47 +3,27 @@ module Broker
   class Message
     attr_accessor :code, :data, :from, :action, :service, :nav
 
-    # def initialize(options)
-    #   @code = options.fetch(:code, "")
-    #   @data = options.fetch(:data, "")
-    #   @from = options.fetch(:from, "")
-    #   @action = options.fetch(:action, "")
-    #   @service = options.fetch(:service, "")
-    #   @nav = options.fetch(:nav, "")
-    # end
-
-    def encode_data
-      if @data != nil && @data != ""
-        return (JSON.generate(@data) rescue @data.to_s)
-      end
-      return ""
-    end
-
-    def decode_data(data_enc)
-      if data_enc and data_enc != ""
-        @data = JSON.parse(data_enc) rescue data_enc
-      end
-    end
-
     def to_res
-      res = [@action]
+      cmds = [@action]
       case @action
       when "req_recv"
-        res.concat [@service, @nav, encode_data, @from]
+        cmds.concat [@service, @nav, @from]
       when "req_send", "job_send"
-        res.concat [@service, @nav, encode_data]
+        cmds.concat [@service, @nav]
       when "res_send"
-        res.concat [@code, encode_data, @from]
+        cmds.concat [@code, @from]
       when "res_recv"
-        res.concat [@code, encode_data]
+        cmds.concat [@code]
       when "err"
-        res << @data.to_s
+        cmds << @data.to_s
+        @data = nil
       end
-      res
+      return [cmds, @data]
     end
 
     def to_s
-      to_res.join(",")
+      cmds, data = to_res
+      return "cmds:#{cmds.join(',')} ; data: #{data}"
     end
 
     def response
@@ -58,26 +38,22 @@ module Broker
       self
     end
 
-    # def self.generate(json_string)
-    #   Message.new(JSON.parse(json_string,:symbolize_names => true))
-    # end
-
-    def self.from_res(res)
+    def self.from_res(cmds, data=nil)
       msg = Message.new
-      msg.action = res[0]
+      msg.action = cmds[0]
 
       case msg.action
       when "req_recv"
-        msg.service = res[1]
-        msg.nav = res[2]
-        msg.decode_data(res[3])
-        msg.from = res[4]
+        msg.service = cmds[1]
+        msg.nav = cmds[2]
+        msg.from = cmds[3]
+        msg.data = data
       when "res_recv"
-        msg.code = res[1]
-        msg.decode_data(res[2])
+        msg.code = cmds[1]
+        msg.data = data
       when "err"
         msg.code = "500"
-        msg.data = res[1]
+        msg.data = cmds[1]
       end
       msg
     end
