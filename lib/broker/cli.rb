@@ -234,6 +234,7 @@ module Broker
     end
 
     def run(name = nil)
+      setup_signals
       @name = name if name
       @running = true
       while @running
@@ -303,7 +304,23 @@ module Broker
     end
 
     def close
-      worker_pool.shutdwon { |worker| worker.disconnect }
+      worker_pool.shutdown { |worker| worker.disconnect }
+    end
+
+    def shutdown
+      @running = false
+    end
+
+    def setup_signals
+      Signal.trap("INT") {
+        shutdown
+        exit
+      }
+
+      Signal.trap("TERM") {
+        shutdown
+        exit
+      }
     end
 
     def invoke(cmds, data=nil)
