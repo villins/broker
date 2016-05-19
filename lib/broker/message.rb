@@ -21,6 +21,22 @@ module Broker
       return [cmds, @data]
     end
 
+    def code=(v)
+      @code = v.to_s
+    end
+
+    def from=(v)
+      @from = v.to_s
+    end
+
+    def nav=(v)
+      @nav = v.to_s
+    end
+
+    def service=(v)
+      @service = v.to_s
+    end
+
     def to_s
       cmds, data = to_res
       return "cmds:#{cmds.join(',')} ; data: #{data}"
