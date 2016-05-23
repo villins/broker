@@ -37,6 +37,10 @@ module Broker
       @service = v.to_s
     end
 
+    def res_success?
+      code == "0" || code == "302"
+    end
+
     def to_s
       cmds, data = to_res
       return "cmds:#{cmds.join(',')} ; data: #{data}"
