@@ -30,6 +30,8 @@ module Broker
     end
 
     def request_broker(action, service, params, nav)
+      logger.info "#{action} => [#{[service, params, nav].join(",")}]"
+
       req = Broker::Message.new
       req.action = action
       req.service = service
@@ -39,6 +41,12 @@ module Broker
       cmds, data = req.to_res
       cmds, data = invoke(cmds, data)
       res = Broker::Message.from_res cmds, data
+
+      if res.action == "err"
+        logger.error "res_recv <= #{cmds.join(',')}"
+      else
+        logger.info "res_recv <= \ncode: #{res.code}\ndata: #{res.data}"
+      end
       res
     end
 
@@ -158,20 +166,23 @@ module Broker
             req = Broker::Message.from_res(res, data)
             rep = Broker::Message.from_res(res, data).response
 
+
+            logger.info "req_recv <= [#{[req.service, req.data, req.nav].join(",")}]"
+
             if handle = routes[req.service]
               begin
                 handle.call(req, rep)
               rescue StandardError => err
                 rep.code = "500"
                 rep.data = "服务处理失败：%s" % err
-                logger.error "服务处理失败: #{ err }"
                 log_backtrace err
               end
             else
               rep.code = "400"
               rep.data = "服务处理失败：找不到 %s 的相关处理" % req.service
-              logger.info "服务处理失败: #{ err }"
             end
+
+            logger.info "res_send => \ncode:#{rep.code}\ndata:#{rep.data}"
 
             cmds, data = rep.to_res
             res, data = invoke(cmds, data)
@@ -299,7 +310,7 @@ module Broker
         log_backtrace err
       ensure
         doing = false
-        logger.info "微服务重启……"
+        logger.info "\n\n微服务重启……"
       end
     end
 
