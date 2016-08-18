@@ -1,81 +1,105 @@
 require 'json'
 module Broker
   class Message
-    attr_accessor :code, :data, :from, :action, :service, :nav
+    # res code
+    # 0 => OK
+    # 2xx => Borker库内部调用错误
+    # 3xx => 参数问题
+    # 4xx => 超时、找不到地址等错误
+    # 5xx => 业务或未知错误
+
+    attr_accessor :bid
+    attr_accessor :action, :topic, :channel
+    attr_accessor :data
+    attr_writer :sendtime, :rid, :traceid, :timeout, :deadline, :v
+
+    @@next_id = 0
+    @@max_id = 1000000
+
+    class << self
+      def trace(traceid)
+        Thread.current["msg_traceid"] = traceid
+      end
+
+      def next_id
+        id = 0
+        SignalSync.lock(:msg_next_id) {
+          if @@next_id < @@max_id
+            @@next_id += 1
+          else
+            @@next_id = 1
+          end
+          id = @@next_id
+        }
+        id
+      end
+    end
 
     def to_res
-      cmds = [@action]
-      case @action
-      when "req_recv"
-        cmds.concat [@service, @nav, @from]
-      when "req_send", "job_send"
-        cmds.concat [@service, @nav]
-      when "res_send"
-        cmds.concat [@code, @from]
-      when "res_recv"
-        cmds.concat [@code]
-      when "err"
-        cmds << @data.to_s
-        @data = nil
-      end
-      return [cmds, @data]
+      msg = Message.new
+      msg.code = "0"
+      msg.action = "res"
+      msg.traceid = traceid
+      msg.bid = bid
+      msg.rid = rid
+      msg.deadline = deadline
+      msg.v = v
+      msg
     end
 
-    def code=(v)
-      @code = v.to_s
+    def to_res_json
+      Oj.dump({
+        code: code,
+        data: data
+      })
     end
 
-    def from=(v)
-      @from = v.to_s
+    def v
+      @v ||= 1
+    end
+
+    def rid
+      @rid ||= "#{Process.pid}|#{Message.next_id}"
+    end
+
+    def traceid
+      @traceid ||= Thread.current["msg_traceid"]
+    end
+
+    def nav
+      @nav ||= ""
     end
 
     def nav=(v)
       @nav = v.to_s
     end
 
-    def service=(v)
-      @service = v.to_s
+    def code
+      @code ||= "0"
     end
 
-    def res_success?
-      code == "0" || code == "302"
+    def code=(v)
+      @code = v.to_s
     end
 
-    def to_s
-      cmds, data = to_res
-      return "cmds:#{cmds.join(',')} ; data: #{data}"
+    def service
+      [@topic, @channel].join(",")
     end
 
-    def response
-      @action = "res_send"
-      @code = "0"
-      @data = {}
-      self
+    def service=(url)
+      @topic, @channel = url.split("/", 2)
     end
 
-    def request
-      @action = "req_send"
-      self
+    def sendtime
+      @sendtime ||= Time.now.to_i
     end
 
-    def self.from_res(cmds, data=nil)
-      msg = Message.new
-      msg.action = cmds[0]
+    def timeout
+      @timeout ||= 1
+    end
 
-      case msg.action
-      when "req_recv"
-        msg.service = cmds[1]
-        msg.nav = cmds[2]
-        msg.from = cmds[3]
-        msg.data = data
-      when "res_recv"
-        msg.code = cmds[1]
-        msg.data = data
-      when "err"
-        msg.code = "500"
-        msg.data = cmds[1]
-      end
-      msg
+    def deadline
+      @deadline ||= sendtime + timeout
     end
   end
 end

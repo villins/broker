@@ -1,8 +1,6 @@
 module Broker
   Error           = Class.new(RuntimeError)
-  ConnectionError = Class.new(Error)
-  TimeoutError    = Class.new(Error)
-  CommandError    = Class.new(Error)
-  FutureNotReady  = Class.new(Error)
-  MSStopError     = Class.new(Error)
+  BrokerUninitialized = Class.new(Error)
+  ProtocolError   = Class.new(Error)
+  ArgumentError   = Class.new(Error)
 end

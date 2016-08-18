@@ -1,56 +1,45 @@
 require 'msgpack'
-require "broker/version"
-require "connection_pool"
-require "broker/logging"
-require "broker/errors"
-require "broker/message"
-require "broker/worker"
-require "broker/cli"
-require 'broker/beanstalk_hack'
+require 'oj'
+require 'thread'
+require 'logging'
+require_relative "broker/version"
+require_relative "broker/errors"
+require_relative "broker/signal"
+require_relative "broker/pool"
+require_relative "broker/redis_pool"
+require_relative "broker/bean_pool"
+require_relative "broker/json_log"
+require_relative "broker/message"
+require_relative "broker/manager"
+require_relative "broker/worker"
+require_relative "broker/worker/inbox_worker"
+require_relative "broker/worker/job_worker"
 
-
+Oj.default_options = {:symbol_keys => false, :mode => :compat}
+MultiJson.use :oj
 
 module Broker
-  def self.configure
-    yield server.configuration
-    unless server.configuration.pool_work_size?
-      Broker::Logging.logger.error("pool_size must be gt worker_pool_size")
-    end
+  extend self
+  @@manager = nil
+
+  def method_missing(name, *args, &block)
+    raise BrokerUninitialized if @@manager.nil?
+    @@manager.send(name, *args, &block)
   end
 
-  def self.configuration
-    server.configuration
+  def configure(&block)
+    conf = Config.new
+    block.call conf if block
+    @@manager = Manager.instance(conf)
   end
 
-  def self.service
-    configuration.service
+  def start_server(*args)
+    @@manager.start_server
   end
+  alias_method :run, :start_server
 
-  def self.sync_config_handle(&block)
-    server.sync_config(block) if block_given?
-  end
-
-  def self.on(topic, &block)
-    server.subscribe(topic, &block)
-  end
-
-  def self.job(topic, &block)
-    server.job(topic, &block)
-  end
-
-  def self.server
-    @server ||= Broker::Cli.new
-  end
-
-  def self.request(topic, data = {}, nav="")
-    server.request(topic, data, nav)
-  end
-
-  def self.put(tube, data={}, nav="")
-    server.put(tube, data, nav)
-  end
-
-  def self.run(name)
-    server.run name
+  # discard
+  def sync_config_handle(&block)
+    @@manager
   end
 end
