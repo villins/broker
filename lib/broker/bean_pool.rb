@@ -41,7 +41,7 @@ module Broker
       end
 
       def is_conn_err(err)
-        err_is?(err, Beaneater::NotConnected, EOFError, Errno::ECONNRESET, Errno::EPIPE, Errno::ECONNREFUSED)
+        err_is?(err, Beaneater::UnexpectedResponse, Beaneater::NotConnected, EOFError, Errno::ECONNRESET, Errno::EPIPE, Errno::ECONNREFUSED)
       end
     end
   end

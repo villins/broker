@@ -6,12 +6,15 @@ module Broker
       begin
         @manager.beans.with {|conn|
           conn.tubes.watch(*tubes)
-
+          job = nil
           begin
             job = conn.tubes.reserve(@manager.conf.pop_timeout)
             process_job(job)
+            job.delete
           rescue Beaneater::JobNotReserved, Beaneater::NotFoundError, Beaneater::TimedOutError
             false
+          ensure
+            job.bury if job && job.reserved
           end
         }
       rescue => err
@@ -19,7 +22,6 @@ module Broker
         sleep(@manager.conf.pop_timeout) if BeanPool.is_conn_err(err)
         false
       end
-
     end
 
     def process_job(job)
@@ -31,18 +33,9 @@ module Broker
       end
 
       msg = @manager.unpack(job.body)
-
       # traceid
       Message.trace msg.traceid
-
-      begin
-        wrk.work(msg.data)
-        job.delete
-      rescue => err
-        @logger.error(err)
-        job.bury
-        return false
-      end
+      wrk.work(msg.data)
       return true
     end
   end
