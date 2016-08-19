@@ -40,6 +40,17 @@ module Broker
           max: pool_size
         }
       end
+
+      def cache(key, timeout_sec, &block)
+        data = self.exec :get, key
+        if data.nil?
+          data = block.call
+          self.exec :set, key, data.to_msgpack, ex: timeout_sec
+        else
+          data = MessagePack.unpack(data)
+        end
+        data
+      end
     end
   end
 end

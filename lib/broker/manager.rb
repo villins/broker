@@ -207,7 +207,7 @@ module Broker
       end
       msg.data = hs[:data]
       msg.nav = hs[:nav]
-      msg.timeout = hs[:timeout] || 1
+      msg.timeout = hs[:timeout] || 3
 
       msg_res = msg.to_res
       msg_res.code = "400"

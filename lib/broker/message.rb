@@ -101,5 +101,9 @@ module Broker
     def deadline
       @deadline ||= sendtime + timeout
     end
+
+    def to_s
+      inspect
+    end
   end
 end
