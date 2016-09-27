@@ -213,18 +213,17 @@ module Broker
       msg_res.code = "400"
       msg_res.data = "broker request timeout"
 
-      begin
-        @redis.exec :rpush, outbox("local"), pack(msg)
-      rescue => err
-        msg_res.code = "201" # local error
-        msg_res.data = "#{err.class}:#{err.to_s}"
-        return msg_res
-      end
-
       waiter = SignalSync.waiter
       @res_waiter_map[msg.rid] = waiter
       waiter.wait(msg.timeout) {|evt, data|
-        if evt == :after
+        if evt == :before
+          begin
+            @redis.exec :rpush, outbox("local"), pack(msg)
+          rescue => err
+            msg_res.code = "201" # local error
+            msg_res.data = "#{err.class}:#{err.to_s}"
+          end
+        else
           msg_res = data unless data.nil?
           @res_waiter_map.delete msg.rid
         end

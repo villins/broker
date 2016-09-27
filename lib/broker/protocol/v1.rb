@@ -37,7 +37,7 @@ module Broker
         else
           raise ProtocolError.new("wrong pack action: #{msg.action}")
         end
-        msg_hs["bid"] = ""
+        msg_hs["bid"] = msg.bid || ""
         msg_hs["tid"] = msg.traceid || ""
         msg_hs["act"] = action
         msg_hs["rid"] = msg.rid
@@ -56,7 +56,6 @@ module Broker
           msg.channel = msg_hs["chan"]
           msg.nav = msg_hs["nav"]
           msg.data = msg_hs["data"]
-          msg.bid = msg_hs["bid"]
         when "res"
           msg.code = msg_hs["code"]
           msg.data = msg_hs["data"]
@@ -64,6 +63,7 @@ module Broker
           raise ProtocolError.new("wrong unpack action: #{msg.action}")
         end
         msg.traceid = msg_hs["tid"]
+        msg.bid = msg_hs["bid"]
         msg.rid = msg_hs["rid"]
         msg.deadline = msg_hs["dl"]
         msg.sendtime = msg_hs["st"]

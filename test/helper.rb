@@ -1,4 +1,5 @@
 gem 'minitest'
+require 'thread'
 require 'minitest/pride'
 require 'minitest/autorun'
 require_relative '../lib/broker'
@@ -35,6 +36,7 @@ class Minitest::Test
     @msg_req.data = @req_data
     @msg_req.traceid = @traceid
     @msg_req.rid = @rid
+    @msg_req.bid = "local"
     @msg_req.sendtime = @sendtime
     @msg_req.deadline = @deadline
   end

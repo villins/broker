@@ -44,7 +44,7 @@ module Broker
       end
 
       msg_bytes = @manager.pack(msg_res)
-      @manager.redis.exec :rpush, @manager.outbox("local"), msg_bytes
+      @manager.redis.exec :rpush, @manager.outbox(msg_req), msg_bytes
     end
 
     def process_res(msg_res)

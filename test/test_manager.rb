@@ -38,31 +38,38 @@ class TestManager< Minitest::Test
   end
 
   def test_pack_and_unpack
-    msg = Broker::Message.new
-    msg.action = "res"
-    msg.v = 0
-    msg.code = @code
-    msg.data = @res_data
-    msg.rid = @rid
-    msg.traceid = @traceid
-    msg.bid = @bid
-
-    assert_raises {
-      @manager.pack(msg)
-    }
-
-    msg.v = 1
-    data = @manager.pack msg
-
+    # first byte is version
+    data = @manager.pack @msg_req
     v = data[0].unpack("C")[0]
     assert_equal 1, v
+
+    # unpack req
+    msg = @manager.unpack data
+    assert_equal msg.rid, @msg_req.rid
+    assert_equal msg.bid, @msg_req.bid
+    assert_equal msg.traceid, @msg_req.traceid
+    assert_equal msg.deadline, @msg_req.deadline
+    assert_equal msg.sendtime, @msg_req.sendtime
+    assert_equal msg.v, @msg_req.v
+    assert_equal msg.action, @msg_req.action
+    assert_equal msg.topic, @msg_req.topic
+    assert_equal msg.channel, @msg_req.channel
+    assert_equal msg.data, @msg_req.data
+
+
+    # req => res, pack and unpack res
+    msg = msg.to_res
+    data = @manager.pack msg
     msg_res = @manager.unpack data
 
-    assert_equal 1, msg_res.v
-    assert_equal @code, msg_res.code
-    assert_equal @res_data, msg_res.data
-    assert_equal @rid, msg_res.rid
-    assert_equal @traceid, msg_res.traceid
+
+    # check req and res
+    assert_equal "0", msg_res.code
+    assert_equal "res", msg_res.action
+    assert_equal @msg_req.rid, msg_res.rid
+    assert_equal @msg_req.bid, msg_res.bid
+    assert_equal @msg_req.traceid, msg_res.traceid
+    assert_equal @msg_req.deadline, msg_res.deadline
   end
 
   def test_inbox
@@ -113,6 +120,28 @@ class TestManager< Minitest::Test
     res = @manager.request("#{@topic}/#{@channel}", @req_data, @nav, 0.01)
     assert_equal "201", res.code
     assert_match ":exec", res.data
+  end
+
+  def test_res_faster_bug
+    queue = Queue.new
+
+    worker = Thread.new {
+      res = queue.pop()
+      @manager.response(res)
+    }
+
+    @mock_redis.expect(:exec, true) do |m, topic, data|
+      result = m == :rpush
+      if result
+        msg = @manager.unpack(data)
+        queue.push(msg.to_res)
+        sleep 0.5
+      end
+      result
+    end
+
+    res = @manager.request("#{@topic}/#{@channel}", @req_data, @nav, 1)
+    assert_equal "0", res.code
   end
 
   def test_put

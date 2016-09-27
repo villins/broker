@@ -45,6 +45,7 @@ class TestMessage < Minitest::Test
     assert_equal "0", msg_res.code
     assert_equal @msg.deadline, msg_res.deadline
     assert_equal @msg.rid, msg_res.rid
+    assert_equal @msg.bid, msg_res.bid
   end
 
   def test_rid
